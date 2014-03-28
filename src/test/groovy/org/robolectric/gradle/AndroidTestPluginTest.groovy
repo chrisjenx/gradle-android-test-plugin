@@ -4,6 +4,7 @@ import org.fest.assertions.api.Assertions
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.testfixtures.ProjectBuilder
+import org.junit.Ignore
 import org.junit.Test
 
 import static org.junit.Assert.assertNotNull
@@ -25,6 +26,18 @@ class AndroidTestPluginTest {
     } catch (IllegalStateException e) {
       Assertions.assertThat(e).hasMessage("The 'android' or 'android-library' plugin is required.");
     }
+  }
+
+  @Test public void pluginDetectsAppPlugin(){
+      Project project = ProjectBuilder.builder().build()
+      project.apply plugin: 'android'
+      project.apply plugin: 'android-test'
+  }
+
+  @Test public void pluginDetectsExtendedAppPlugin(){
+      Project project = ProjectBuilder.builder().build()
+      project.apply plugin: 'extended-android'
+      project.apply plugin: 'android-test'
   }
 
   @Test public void createsATestTaskForTheDebugVariant() {
@@ -114,6 +127,7 @@ class AndroidTestPluginTest {
         return project
     }
 
+  @Ignore
   @Test public void parseInstrumentTestCompile_androidGradle_0_9_0() {
     String androidGradleTool = "com.android.tools.build:gradle:0.9.0"
     String configurationName = "androidTestCompile"
