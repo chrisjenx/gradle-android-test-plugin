@@ -19,6 +19,12 @@ class AndroidTestPluginTest {
     project.apply plugin: 'android-test'
   }
 
+  @Test public void pluginDetectsExtendedLibraryPlugin() {
+    Project project = ProjectBuilder.builder().build()
+    project.apply plugin: 'extended-android-library'
+    project.apply plugin: 'android-test'
+  }
+
   @Test public void pluginFailsWithoutAndroidPlugin() {
     Project project = ProjectBuilder.builder().build()
     try {
