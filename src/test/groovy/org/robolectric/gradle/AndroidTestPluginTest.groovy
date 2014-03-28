@@ -133,7 +133,6 @@ class AndroidTestPluginTest {
         return project
     }
 
-  @Ignore
   @Test public void parseInstrumentTestCompile_androidGradle_0_9_0() {
     String androidGradleTool = "com.android.tools.build:gradle:0.9.0"
     String configurationName = "androidTestCompile"
