@@ -20,27 +20,8 @@ class AndroidTestPlugin implements Plugin<Project> {
 
     void apply(Project project) {
         def extension = project.extensions.create('androidTest', RobolectricTestExtension)
-
         def log = project.logger
-        // Iterate through the plugins to find an instance of the app/lib plugin
-        def hasAppPlugin = false, hasLibraryPlugin = false;
-        def thePlugin = null;
-        project.plugins.each { plugin ->
-            if (plugin instanceof AppPlugin) hasAppPlugin = true
-            else if (plugin instanceof LibraryPlugin) hasLibraryPlugin = true
-            if (hasAppPlugin || hasLibraryPlugin) {
-                thePlugin = plugin
-                return true
-            }
-        }
-
-        // Ensure the Android plugin has been added in app or library form, but not both.
-        if (!hasAppPlugin && !hasLibraryPlugin) {
-            throw new IllegalStateException("The 'android' or 'android-library' plugin is required.")
-        } else if (hasAppPlugin && hasLibraryPlugin) {
-            throw new IllegalStateException(
-                    "Having both 'android' and 'android-library' plugin is not supported.")
-        }
+        def config = new PluginConfiguration(project)
 
         // Create the configuration for test-only dependencies.
         def testConfiguration = project.configurations.create(TEST_TASK_NAME + 'Compile')
@@ -59,13 +40,7 @@ class AndroidTestPlugin implements Plugin<Project> {
         // Add our new task to Gradle's standard "check" task.
         project.tasks.check.dependsOn testTask
 
-        // Set the pluging we captured earlier
-        BasePlugin plugin = thePlugin;
-
-        def variants = hasAppPlugin ? project.android.applicationVariants :
-                project.android.libraryVariants
-
-        variants.all { variant ->
+        config.getVariants().all { variant ->
             if (variant.buildType.name.equals(BuilderConstants.RELEASE)) {
                 log.debug("Skipping release build type.")
                 return;
@@ -74,7 +49,7 @@ class AndroidTestPlugin implements Plugin<Project> {
             // Get the build type name (e.g., "Debug", "Release").
             def buildTypeName = variant.buildType.name.capitalize()
             def projectFlavorNames = [""]
-            if (hasAppPlugin) {
+            if (config.hasAppPlugin()) {
                 // Flavors are only available for the app plugin (e.g., "Free", "Paid").
                 projectFlavorNames = variant.productFlavors.collect { it.name.capitalize() }
                 // TODO support flavor groups... ugh
@@ -104,7 +79,7 @@ class AndroidTestPlugin implements Plugin<Project> {
 
             def testSrcDirs = []
             SourceSet variationSources = javaConvention.sourceSets.create "$TEST_TASK_NAME$variationName"
-            def testDestinationDir = project.files("$project.buildDir/$TEST_CLASSES_DIR/$variant.dirName")
+            def testDestinationDir = project.files("$project.buildDir/$TEST_CLASSES_DIR")
             def testRunClasspath = testCompileClasspath.plus testDestinationDir
 
             TEST_DIRS.each { testDir ->
@@ -144,17 +119,20 @@ class AndroidTestPlugin implements Plugin<Project> {
             testCompileTask.source = variationSources.java
             testCompileTask.destinationDir = testDestinationDir.getSingleFile()
             testCompileTask.doFirst {
-                testCompileTask.options.bootClasspath = plugin.getRuntimeJarList().join(File.pathSeparator)
+                testCompileTask.options.bootClasspath = config.getPlugin().getBootClasspath().join(File.pathSeparator)
             }
 
             // Clear out the group/description of the classes plugin so it's not top-level.
-            def testClassesTask = project.tasks.getByName variationSources.classesTaskName
-            testClassesTask.group = null
-            testClassesTask.description = null
-            testClassesTask.destinationDir = testDestinationDir
+            def testClassesTaskPerVariation = project.tasks.getByName variationSources.classesTaskName
+            testClassesTaskPerVariation.group = null
+            testClassesTaskPerVariation.description = null
+            testClassesTaskPerVariation.destinationDir = testDestinationDir.getSingleFile()
 
-            def testClasses = project.tasks.create("$projectFlavorName$buildTypeName" + 'TestClasses')
-            testClasses.dependsOn testClassesTask
+            def testClassesTaskPerFlavor = project.tasks.create("$projectFlavorName$buildTypeName" + 'TestClasses')
+            testClassesTaskPerFlavor.dependsOn testClassesTaskPerVariation
+
+            def testClassesTask = project.tasks.maybeCreate('testClasses')
+            testClassesTask.dependsOn testClassesTaskPerVariation
 
             // don't leave test resources behind
             def processResourcesTask = project.tasks.getByName variationSources.processResourcesTaskName
@@ -163,18 +141,17 @@ class AndroidTestPlugin implements Plugin<Project> {
             // Create a task which runs the compiled test classes.
             def taskRunName = "$TEST_TASK_NAME$variationName"
             def testRunTask = project.tasks.create(taskRunName, Test)
-            testRunTask.dependsOn testClassesTask
+            testRunTask.dependsOn testClassesTaskPerVariation
             testRunTask.inputs.sourceFiles.from.clear()
             testRunTask.classpath = testRunClasspath
             testRunTask.testClassesDir = testCompileTask.destinationDir
             testRunTask.group = JavaBasePlugin.VERIFICATION_GROUP
             testRunTask.description = "Run unit tests for Build '$variationName'."
-            // TODO Gradle 1.7: testRunTask.reports.html.destination =
-            testRunTask.testReportDir =
+            testRunTask.reports.html.destination =
                     project.file("$project.buildDir/$TEST_REPORT_DIR/$variant.dirName")
             testRunTask.doFirst {
                 // Prepend the Android runtime onto the classpath.
-                def androidRuntime = project.files(plugin.getRuntimeJarList().join(File.pathSeparator))
+                def androidRuntime = project.files(config.getPlugin().getBootClasspath().join(File.pathSeparator))
                 testRunTask.classpath = testRunClasspath.plus project.files(androidRuntime)
             }
 
@@ -194,6 +171,42 @@ class AndroidTestPlugin implements Plugin<Project> {
             }
 
             testTask.reportOn testRunTask
+        }
+    }
+
+    class PluginConfiguration {
+        private final Project   project;
+        private final boolean   hasAppPlugin;
+        private final boolean   hasLibPlugin;
+
+        PluginConfiguration(Project project) {
+            this.project = project
+            this.hasAppPlugin = project.plugins.find { p -> p instanceof AppPlugin }
+            this.hasLibPlugin = project.plugins.find { p -> p instanceof LibraryPlugin }
+
+            if (!hasAppPlugin && !hasLibPlugin) {
+                throw new IllegalStateException("The 'android' or 'android-library' plugin is required.")
+            } else if (hasAppPlugin && hasLibPlugin) {
+                throw new IllegalStateException("Having both 'android' and 'android-library' plugin is not supported.")
+            }
+        }
+
+        def getVariants() {
+            if (hasLibPlugin) return project.android.libraryVariants
+            if (hasAppPlugin) return project.android.applicationVariants
+        }
+
+        def getPlugin() {
+            if (hasAppPlugin) return project.plugins.find { p -> p instanceof AppPlugin }
+            if (hasLibPlugin) return project.plugins.find { p -> p instanceof LibraryPlugin }
+        }
+
+        boolean hasAppPlugin() {
+            return hasAppPlugin
+        }
+
+        boolean hasLibPlugin() {
+            return hasLibPlugin
         }
     }
 }
