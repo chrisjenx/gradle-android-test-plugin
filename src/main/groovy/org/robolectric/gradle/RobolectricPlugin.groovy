@@ -1,9 +1,7 @@
 package org.robolectric.gradle
 
 import com.android.build.gradle.AppPlugin
-import com.android.build.gradle.BasePlugin
 import com.android.build.gradle.LibraryPlugin
-import com.android.builder.BuilderConstants
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.plugins.JavaBasePlugin
@@ -12,14 +10,15 @@ import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.TestReport
 
-class AndroidTestPlugin implements Plugin<Project> {
+class RobolectricPlugin implements Plugin<Project> {
     private static final String[] TEST_DIRS = ['test', 'androidTest']
     private static final String TEST_TASK_NAME = 'test'
     private static final String TEST_CLASSES_DIR = "test-classes"
     private static final String TEST_REPORT_DIR = "test-report"
+    private static final String RELEASE_VARIANT = "release"
 
     void apply(Project project) {
-        def extension = project.extensions.create('androidTest', RobolectricTestExtension)
+        def extension = project.extensions.create('robolectric', RobolectricTestExtension)
         def log = project.logger
         def config = new PluginConfiguration(project)
 
@@ -41,7 +40,7 @@ class AndroidTestPlugin implements Plugin<Project> {
         project.tasks.check.dependsOn testTask
 
         config.getVariants().all { variant ->
-            if (variant.buildType.name.equals(BuilderConstants.RELEASE)) {
+            if (variant.buildType.name.equals(RELEASE_VARIANT)) {
                 log.debug("Skipping release build type.")
                 return;
             }
@@ -153,6 +152,7 @@ class AndroidTestPlugin implements Plugin<Project> {
                 // Prepend the Android runtime onto the classpath.
                 def androidRuntime = project.files(config.getPlugin().getBootClasspath().join(File.pathSeparator))
                 testRunTask.classpath = testRunClasspath.plus project.files(androidRuntime)
+                log.debug("jUnit classpath: $testRunTask.classpath.asPath")
             }
 
             // Work around http://issues.gradle.org/browse/GRADLE-1682
