@@ -1,19 +1,19 @@
 buildscript {
   repositories {
     mavenCentral()
+    maven { url 'http://dl.bintray.com/bmuschko/gradle-plugins' }
   }
 
   dependencies {
-    classpath 'org.gradle.api.plugins:gradle-nexus-plugin:0.2'
+    classpath 'org.gradle.api.plugins:gradle-nexus-plugin:0.7.+'
   }
 }
 
 apply plugin: 'groovy'
-apply plugin: 'maven'
 apply plugin: 'nexus'
 
 group = 'org.robolectric'
-version = '0.10.0'
+version = '0.11.0-SNAPSHOT'
 
 dependencies {
   repositories {
@@ -26,6 +26,13 @@ dependencies {
 
   testCompile 'junit:junit:4.10'
   testCompile 'org.easytesting:fest-assert-core:2.0M10'
+}
+
+nexus {
+  if(hasProperty("localRepositoryUrl"))
+    repositoryUrl = getProperty("localRepositoryUrl")
+  if(hasProperty("localSnapshotRepositoryUrl"))
+    snapshotRepositoryUrl = getProperty("localSnapshotRepositoryUrl")
 }
 
 install {
